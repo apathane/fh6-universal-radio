@@ -252,6 +252,9 @@
   "ytmusic.radio.empty": "Start a radio from any search result to see it here.",
   "ytmusic.radio.now_playing": "Now in your radio",
 
+  "ytmusic.home.empty": "Search for something to get started, or browse your library.",
+  "ytmusic.home.up_next": "Up next",
+
   // ─── Jellyfin card ──────────────────────────────────────────────────────
   "jellyfin.title": "Jellyfin",
   "jellyfin.description": "Enter a Jellyfin Playlist ID. The radio switches source and starts streaming immediately.",
