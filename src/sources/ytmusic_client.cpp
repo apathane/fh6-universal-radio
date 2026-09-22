@@ -171,11 +171,11 @@ std::string InnertubeClient::post(std::string_view endpoint, const std::string& 
 }
 
 Result<std::vector<SearchResultItem>> InnertubeClient::search(const std::string& query) const {
-    json body = {{"context", json::parse(kContext)}, {"query", query}};
-    const std::string resp = post("/youtubei/v1/search", body.dump());
-    if (resp.empty()) return {InnertubeStatus::network_error, {}};
-
     try {
+        json body = {{"context", json::parse(kContext)}, {"query", query}};
+        const std::string resp = post("/youtubei/v1/search", body.dump());
+        if (resp.empty()) return {InnertubeStatus::network_error, {}};
+
         auto root = json::parse(resp);
         if (looks_unauthenticated(root)) return {InnertubeStatus::needs_auth, {}};
 
