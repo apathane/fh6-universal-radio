@@ -292,11 +292,96 @@ Result<LibrarySnapshot> InnertubeClient::browse_library() const {
         return {InnertubeStatus::parse_error, {}};
     }
 }
-Result<std::vector<QueueTrack>> InnertubeClient::next(const std::string&) const {
-    return {InnertubeStatus::parse_error, {}};
+Result<std::vector<QueueTrack>> InnertubeClient::next(const std::string& video_id) const {
+    try {
+        // isAudioOnly + a plain videoId body is Innertube's radio/autoplay
+        // continuation: the same "start radio" queue the WEB_REMIX player
+        // builds when a track is played with radio enabled.
+        json body = {{"context", json::parse(kContext)}, {"videoId", video_id}, {"isAudioOnly", true}};
+        const std::string resp = post("/youtubei/v1/next", body.dump());
+        if (resp.empty()) return {InnertubeStatus::network_error, {}};
+
+        auto root = json::parse(resp);
+        if (looks_unauthenticated(root)) return {InnertubeStatus::needs_auth, {}};
+
+        std::vector<json> items;
+        collect_objects(root, "playlistPanelVideoRenderer", items);
+
+        std::vector<QueueTrack> out;
+        out.reserve(items.size());
+        for (auto& item : items) {
+            QueueTrack t;
+            t.video_id = first_string(item, "videoId");
+            if (t.video_id.empty()) continue;
+            t.thumbnail_url = best_thumbnail(item);
+
+            std::vector<std::string> texts;
+            collect_strings(item, "text", texts);
+            if (!texts.empty()) t.title = texts.front();
+            if (texts.size() > 1) t.artist = texts[1];
+            for (auto& s : texts) {
+                if (auto ms = parse_duration_to_ms(s); ms > 0) {
+                    t.duration_ms = ms;
+                    break;
+                }
+            }
+            if (t.video_id != video_id) out.push_back(std::move(t)); // drop the seed track itself
+        }
+        return {InnertubeStatus::ok, std::move(out)};
+    } catch (const std::exception& e) {
+        log::warn("[ytmusic] next (radio) parse failed: {}", e.what());
+        return {InnertubeStatus::parse_error, {}};
+    }
 }
-Result<std::string> InnertubeClient::lyrics(const std::string&) const {
-    return {InnertubeStatus::parse_error, {}};
+
+Result<std::string> InnertubeClient::lyrics(const std::string& video_id) const {
+    std::string lyrics_browse_id;
+    try {
+        json next_body = {{"context", json::parse(kContext)}, {"videoId", video_id}};
+        const std::string next_resp = post("/youtubei/v1/next", next_body.dump());
+        if (next_resp.empty()) return {InnertubeStatus::network_error, {}};
+
+        auto root = json::parse(next_resp);
+        if (looks_unauthenticated(root)) return {InnertubeStatus::needs_auth, {}};
+
+        // The lyrics tab's browseId is prefixed "MPLYt" in every known
+        // Innertube response; the generic walker collects every browseId in
+        // the tree, so filter for that prefix rather than trusting position.
+        std::vector<std::string> ids;
+        collect_strings(root, "browseId", ids);
+        for (auto& id : ids) {
+            if (id.starts_with("MPLYt")) {
+                lyrics_browse_id = id;
+                break;
+            }
+        }
+    } catch (const std::exception& e) {
+        log::warn("[ytmusic] lyrics (locating tab) parse failed: {}", e.what());
+        return {InnertubeStatus::parse_error, {}};
+    }
+
+    if (lyrics_browse_id.empty()) return {InnertubeStatus::ok, {}}; // no lyrics for this track, not an error
+
+    try {
+        json browse_body = {{"context", json::parse(kContext)}, {"browseId", lyrics_browse_id}};
+        const std::string browse_resp = post("/youtubei/v1/browse", browse_body.dump());
+        if (browse_resp.empty()) return {InnertubeStatus::network_error, {}};
+
+        auto root = json::parse(browse_resp);
+        // Lyrics text lives in a single "description" run in the lyrics
+        // renderer; take the longest string found anywhere in the tree as a
+        // pragmatic stand-in for "the one that's the actual lyrics block",
+        // since short UI labels are also plain strings in the same tree.
+        std::vector<std::string> texts;
+        collect_strings(root, "description", texts);
+        std::string best;
+        for (auto& s : texts)
+            if (s.size() > best.size()) best = s;
+        return {InnertubeStatus::ok, std::move(best)};
+    } catch (const std::exception& e) {
+        log::warn("[ytmusic] lyrics (fetching text) parse failed: {}", e.what());
+        return {InnertubeStatus::parse_error, {}};
+    }
 }
 
 } // namespace fh6::ytmusic
