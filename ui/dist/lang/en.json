@@ -234,6 +234,11 @@
   "youtube_music.saved_stations": "Saved YouTube Music stations",
   "youtube_music.shuffle": "Shuffle",
 
+  "ytmusic.nav.home": "Home",
+  "ytmusic.nav.search": "Search",
+  "ytmusic.nav.library": "Library",
+  "ytmusic.nav.radio": "Radio",
+
   // ─── Jellyfin card ──────────────────────────────────────────────────────
   "jellyfin.title": "Jellyfin",
   "jellyfin.description": "Enter a Jellyfin Playlist ID. The radio switches source and starts streaming immediately.",

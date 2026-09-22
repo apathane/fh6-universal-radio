@@ -17,6 +17,7 @@ import { createLocalFiles } from "./render/localFiles.js";
 import { createOnlineRadio } from "./render/onlineRadio.js";
 import { createYoutubeMusic } from "./render/youtubeMusic.js";
 import { createJellyfin } from "./render/jellyfin.js";
+import { createYtMusicShell } from "./ytmusic/shell.js";
 import { initI18n, onLangChange, t, setLang, getLang } from "./i18n.js";
 import { prefs } from "./preferences.js";
 import { downloadJson, todayStamp } from "./lib/download.js";
@@ -78,6 +79,7 @@ let localFiles;
 let onlineRadio;
 let youtubeMusic;
 let jellyfin;
+let ytMusicShell;
 
 async function switchSource(name) {
     try {
@@ -160,6 +162,10 @@ async function requestCloseDrawer() {
 
 function render() {
     if (!state) return;
+
+    const ytActive = state.sources?.active === "youtube_music";
+    for (const node of background) if (node) node.hidden = ytActive;
+
     renderStatus(refs.status, state);
     renderNowPlaying(refs.np, state);
     renderSources(refs.sources, state, cfg, switchSource);
@@ -174,6 +180,8 @@ function render() {
     refs.outputCard.hidden = !state.sources?.active;
 
     document.body.classList.toggle("view-minimal", prefs.viewMode.get() === "minimal");
+
+    ytMusicShell.render(state, cfg);
 }
 
 const backupBtn = document.getElementById("backup-config");
@@ -404,6 +412,8 @@ async function boot() {
     }, $("#mini-vol-tooltip"));
 
     deps = createDeps(mainEl);
+
+    ytMusicShell = createYtMusicShell();
 
     externalAudio = createExternalAudio(mainEl, {
         getState: () => state,
