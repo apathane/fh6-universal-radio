@@ -255,6 +255,11 @@
   "ytmusic.home.empty": "Search for something to get started, or browse your library.",
   "ytmusic.home.up_next": "Up next",
 
+  "ytmusic.lyrics.open": "Lyrics",
+  "ytmusic.lyrics.loading": "Loading lyrics...",
+  "ytmusic.lyrics.none": "No lyrics for this track.",
+  "ytmusic.lyrics.error": "Could not load lyrics.",
+
   // ─── Jellyfin card ──────────────────────────────────────────────────────
   "jellyfin.title": "Jellyfin",
   "jellyfin.description": "Enter a Jellyfin Playlist ID. The radio switches source and starts streaming immediately.",

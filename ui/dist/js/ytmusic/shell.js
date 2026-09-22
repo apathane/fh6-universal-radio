@@ -5,6 +5,8 @@ import { createHome } from "./views/home.js";
 import { createSearch } from "./views/search.js";
 import { createLibrary } from "./views/library.js";
 import { createRadio } from "./views/radio.js";
+import { createLyricsPanel } from "./lyrics.js";
+import { getQueue } from "./queue.js";
 
 const TABS = [
     ["home", "ytmusic.nav.home"],
@@ -47,7 +49,8 @@ export function createYtMusicShell() {
         tabbar.append(tabBtn);
     }
 
-    content.append(views.home.root, views.search.root, views.library.root, views.radio.root);
+    const lyricsPanel = createLyricsPanel();
+    content.append(views.home.root, views.search.root, views.library.root, views.radio.root, lyricsPanel.root);
 
     const npImg = el("img", { class: "yt-np-img", alt: "" });
     const npTitle = el("div", { class: "yt-np-title" });
@@ -56,11 +59,17 @@ export function createYtMusicShell() {
     const npPos = el("span", { class: "yt-np-time" });
     const npDur = el("span", { class: "yt-np-time" });
     const npPlay = el("button", { type: "button", class: "icon-btn primary" });
+    const npLyricsBtn = el("button", { type: "button", class: "icon-btn", dataset: { i18n: "ytmusic.lyrics.open" } }, t("ytmusic.lyrics.open"));
+    npLyricsBtn.addEventListener("click", () => {
+        const track = getQueue().items[0];
+        if (track?.video_id) lyricsPanel.open(track.video_id, track.title);
+    });
     const npBar = el("div", { class: "yt-now-playing" }, [
         npImg,
         el("div", { class: "yt-np-text" }, [npTitle, npArtist]),
         el("div", { class: "yt-np-progress" }, [npPos, el("div", { class: "yt-np-bar" }, [npFill]), npDur]),
         npPlay,
+        npLyricsBtn,
     ]);
 
     const shell = el("div", { id: "ytmusic-shell", hidden: true }, [rail, content, npBar, tabbar]);
