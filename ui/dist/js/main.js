@@ -413,7 +413,7 @@ async function boot() {
 
     deps = createDeps(mainEl);
 
-    ytMusicShell = createYtMusicShell();
+    ytMusicShell = createYtMusicShell({ transport, openDrawer });
 
     externalAudio = createExternalAudio(mainEl, {
         getState: () => state,

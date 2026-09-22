@@ -1,5 +1,6 @@
 import { el } from "../lib/dom.js";
 import { t } from "../i18n.js";
+import { icons } from "../icons.js";
 import { renderNowPlaying } from "../render/nowPlaying.js";
 import { createHome } from "./views/home.js";
 import { createSearch } from "./views/search.js";
@@ -15,7 +16,7 @@ const TABS = [
     ["radio", "ytmusic.nav.radio"],
 ];
 
-export function createYtMusicShell() {
+export function createYtMusicShell({ transport, openDrawer } = {}) {
     let activeTab = "home";
 
     const railButtons = new Map();
@@ -23,6 +24,19 @@ export function createYtMusicShell() {
     const rail = el("nav", { class: "yt-rail", "aria-label": "YouTube Music sections" });
     const tabbar = el("nav", { class: "yt-tabbar", "aria-label": "YouTube Music sections" });
     const content = el("div", { class: "yt-content" });
+
+    // The takeover hides the generic dashboard's own header (settings) and
+    // hero (transport), so the shell needs its own way to reach both;
+    // otherwise, once youtube_music is active, there is no way to pause,
+    // skip, or open settings at all.
+    const settingsBtn = el("button", {
+        type: "button",
+        class: "yt-nav-btn icon-btn",
+        "aria-label": t("settings.open"),
+    });
+    settingsBtn.innerHTML = icons.gear; // trusted static app icon, same pattern as main.js's mini-player icons
+    settingsBtn.addEventListener("click", () => openDrawer?.());
+    rail.append(settingsBtn);
 
     const views = {
         home: createHome(),
@@ -59,7 +73,17 @@ export function createYtMusicShell() {
     const npFill = el("div", { class: "yt-np-fill" });
     const npPos = el("span", { class: "yt-np-time" });
     const npDur = el("span", { class: "yt-np-time" });
+    const npPrev = el("button", { type: "button", class: "icon-btn", "aria-label": t("now_playing.previous") });
+    npPrev.innerHTML = icons.prev;
+    npPrev.addEventListener("click", () => transport?.("previous"));
+
     const npPlay = el("button", { type: "button", class: "icon-btn primary" });
+    npPlay.addEventListener("click", () => transport?.("play"));
+
+    const npNext = el("button", { type: "button", class: "icon-btn", "aria-label": t("now_playing.next") });
+    npNext.innerHTML = icons.next;
+    npNext.addEventListener("click", () => transport?.("next"));
+
     const npLyricsBtn = el("button", { type: "button", class: "icon-btn", dataset: { i18n: "ytmusic.lyrics.open" } }, t("ytmusic.lyrics.open"));
     npLyricsBtn.addEventListener("click", () => {
         const track = getQueue().items[0];
@@ -69,7 +93,9 @@ export function createYtMusicShell() {
         npImg,
         el("div", { class: "yt-np-text" }, [npTitle, npArtist]),
         el("div", { class: "yt-np-progress" }, [npPos, el("div", { class: "yt-np-bar" }, [npFill]), npDur]),
+        npPrev,
         npPlay,
+        npNext,
         npLyricsBtn,
     ]);
 
