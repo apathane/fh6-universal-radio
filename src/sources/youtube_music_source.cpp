@@ -87,7 +87,8 @@ struct YouTubeMusicSource::Pipe {
 YouTubeMusicSource::YouTubeMusicSource(YouTubeMusicConfig cfg, std::filesystem::path ffmpeg_path,
                                        std::filesystem::path data_dir, worker::WorkerClient* worker)
     : cfg_{std::move(cfg)}, ffmpeg_path_{std::move(ffmpeg_path)}, worker_{worker},
-      client_{cfg_.cookies_path}, cache_dir_{data_dir / "ytmusic_cache"} {
+      client_{std::make_shared<const ytmusic::InnertubeClient>(cfg_.cookies_path)},
+      cache_dir_{data_dir / "ytmusic_cache"} {
     std::error_code ec;
     std::filesystem::create_directories(cache_dir_, ec);
 }
@@ -113,7 +114,9 @@ void YouTubeMusicSource::set_config(YouTubeMusicConfig cfg) {
         }
 
         if (cfg.cookies_path != cfg_.cookies_path) {
-            client_ = ytmusic::InnertubeClient{cfg.cookies_path};
+            auto next = std::make_shared<const ytmusic::InnertubeClient>(cfg.cookies_path);
+            std::scoped_lock client_lk{client_mtx_};
+            client_ = std::move(next);
         }
 
         cfg_ = std::move(cfg);
@@ -845,7 +848,12 @@ void YouTubeMusicSource::refresh_cache_in_background(std::string browse_id) {
     if (!cache_refreshing_.compare_exchange_strong(expected, true)) return; // already refreshing
 
     std::thread([this, browse_id = std::move(browse_id)]() {
-        auto result = client_.browse_playlist(browse_id);
+        std::shared_ptr<const ytmusic::InnertubeClient> client;
+        {
+            std::scoped_lock client_lk{client_mtx_};
+            client = client_;
+        }
+        auto result = client->browse_playlist(browse_id);
         if (result.ok()) {
             save_cached_queue(browse_id, result.value);
             std::scoped_lock lk{mu_};
@@ -880,7 +888,12 @@ bool YouTubeMusicSource::cast_library_playlist(std::string browse_id) {
             refresh_cache_in_background(browse_id); // stale: serve it, refresh behind it
         }
     } else {
-        auto result = client_.browse_playlist(browse_id);
+        std::shared_ptr<const ytmusic::InnertubeClient> client;
+        {
+            std::scoped_lock client_lk{client_mtx_};
+            client = client_;
+        }
+        auto result = client->browse_playlist(browse_id);
         if (!result.ok() || result.value.empty()) return false;
         tracks = result.value;
         save_cached_queue(browse_id, tracks);
@@ -904,7 +917,12 @@ bool YouTubeMusicSource::cast_library_playlist(std::string browse_id) {
 }
 
 bool YouTubeMusicSource::start_radio(std::string seed_video_id) {
-    auto result = client_.next(seed_video_id);
+    std::shared_ptr<const ytmusic::InnertubeClient> client;
+    {
+        std::scoped_lock client_lk{client_mtx_};
+        client = client_;
+    }
+    auto result = client->next(seed_video_id);
     if (!result.ok() || result.value.empty()) return false;
 
     std::scoped_lock lk{mu_};
@@ -929,15 +947,30 @@ bool YouTubeMusicSource::start_radio(std::string seed_video_id) {
 
 ytmusic::Result<std::vector<ytmusic::SearchResultItem>>
 YouTubeMusicSource::search_catalog(const std::string& query) const {
-    return client_.search(query);
+    std::shared_ptr<const ytmusic::InnertubeClient> client;
+    {
+        std::scoped_lock client_lk{client_mtx_};
+        client = client_;
+    }
+    return client->search(query);
 }
 
 ytmusic::Result<ytmusic::LibrarySnapshot> YouTubeMusicSource::library_snapshot() const {
-    return client_.browse_library();
+    std::shared_ptr<const ytmusic::InnertubeClient> client;
+    {
+        std::scoped_lock client_lk{client_mtx_};
+        client = client_;
+    }
+    return client->browse_library();
 }
 
 ytmusic::Result<std::string> YouTubeMusicSource::track_lyrics(const std::string& video_id) const {
-    return client_.lyrics(video_id);
+    std::shared_ptr<const ytmusic::InnertubeClient> client;
+    {
+        std::scoped_lock client_lk{client_mtx_};
+        client = client_;
+    }
+    return client->lyrics(video_id);
 }
 
 } // namespace fh6::sources

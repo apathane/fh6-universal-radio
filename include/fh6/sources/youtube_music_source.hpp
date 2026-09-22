@@ -125,7 +125,12 @@ private:
     worker::WorkerClient* worker_;
     // Declared after worker_ (and before pipe_) to match the constructor's
     // member-init order: cfg_, ffmpeg_path_, worker_, client_, cache_dir_.
-    ytmusic::InnertubeClient client_;
+    // client_ is rebuilt (not mutated) under client_mtx_ whenever cookies_path
+    // changes; readers copy the shared_ptr under the lock and then call
+    // through it unlocked, same shape as dsp_control_loop.cpp's
+    // playback_opts_/playback_opts_mtx_.
+    mutable std::mutex client_mtx_;
+    std::shared_ptr<const ytmusic::InnertubeClient> client_;
     std::filesystem::path cache_dir_;
     std::atomic<bool> cache_refreshing_{false};
     std::unique_ptr<Pipe> pipe_;
