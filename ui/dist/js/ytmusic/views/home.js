@@ -8,6 +8,7 @@ export function createHome() {
     const root = el("section", { class: "yt-view yt-view-home", hidden: true }, [body]);
 
     let browseLoaded = false;
+    let browseFetchInFlight = false;
 
     function resultRow(item) {
         const row = el("div", { class: "yt-search-row" }, [
@@ -38,6 +39,8 @@ export function createHome() {
     }
 
     async function loadBrowseFeed() {
+        if (browseFetchInFlight) return;
+        browseFetchInFlight = true;
         body.replaceChildren(el("p", { class: "muted" }, t("ytmusic.home.loading")));
         try {
             const r = await api.youtubeMusic.home();
@@ -48,24 +51,17 @@ export function createHome() {
             }
             body.replaceChildren(...items.map(resultRow));
         } catch (e) {
+            // e.message surfaces the backend's actual text (e.g. "not
+            // authenticated" for a signed-in user's expired cookie), same
+            // pattern the library view uses, distinct from the generic
+            // fallback for an unrelated network hiccup.
             body.replaceChildren(el("p", { class: "muted" }, e.message || t("ytmusic.home.browse_error")));
+        } finally {
+            browseFetchInFlight = false;
         }
     }
 
-    // The queue (whatever is currently playing or was last queued, from
-    // search, library or radio) takes priority when there is one; otherwise
-    // Home is the live browse feed, fetched once, so there is always
-    // something to pick from here even with no account signed in.
-    function draw() {
-        const q = getQueue();
-        if (!q.source || !q.items.length) {
-            if (!browseLoaded) {
-                browseLoaded = true;
-                loadBrowseFeed();
-            }
-            return;
-        }
-        browseLoaded = false; // queue was cleared elsewhere; re-fetch the feed next time we land here empty
+    function drawUpNext(q) {
         body.replaceChildren(
             el("h3", {}, t("ytmusic.home.up_next")),
             ...q.items.map(track =>
@@ -77,8 +73,31 @@ export function createHome() {
         );
     }
 
-    onQueueChange(draw);
-    draw();
+    // Reacts to the shared queue regardless of which tab is currently shown
+    // (matches the pre-existing design: Home always reflects what's
+    // actually playing). The live browse feed is different: fetching it is
+    // a real network call, so it's gated in render() below on Home actually
+    // being the visible tab, not fired unconditionally at construction.
+    onQueueChange(q => {
+        if (q.source && q.items.length) {
+            browseLoaded = false; // queue emptying later should re-fetch a fresh feed
+            drawUpNext(q);
+        }
+    });
 
-    return { root, render() {} };
+    return {
+        root,
+        render(state) {
+            if (state?.sources?.active !== "youtube_music") return;
+            const q = getQueue();
+            if (q.source && q.items.length) {
+                drawUpNext(q);
+                return;
+            }
+            if (!browseLoaded) {
+                browseLoaded = true;
+                loadBrowseFeed();
+            }
+        },
+    };
 }

@@ -21,6 +21,24 @@ beforeEach(() => {
 });
 
 describe("ytmusic home view", () => {
+  it("does not fetch the browse feed on construction, only once render() sees youtube_music active", async () => {
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ results: [] }) });
+    const { root } = createHome();
+    document.body.append(root);
+    await new Promise(r => setTimeout(r, 0));
+
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("does not fetch when render() is called but a different source is active", async () => {
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ results: [] }) });
+    const { render } = createHome();
+    render({ sources: { active: "online_radio" } });
+    await new Promise(r => setTimeout(r, 0));
+
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
   it("fetches and renders the live browse feed when nothing is queued", async () => {
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
@@ -50,7 +68,7 @@ describe("ytmusic home view", () => {
     expect(root.textContent).toContain("Nothing to show right now.");
   });
 
-  it("works without an account: a 401 from the backend still doesn't crash the view", async () => {
+  it("shows the backend's own error text on a 401, rather than throwing", async () => {
     global.fetch = vi.fn().mockResolvedValue({
       ok: false,
       statusText: "Unauthorized",
@@ -61,9 +79,11 @@ describe("ytmusic home view", () => {
     render({ sources: { active: "youtube_music" } });
     await new Promise(r => setTimeout(r, 0));
 
-    // The home feed itself never requires auth; a 401 here would only come
-    // from an unrelated backend hiccup, and should degrade to the error
-    // copy rather than throw.
+    // browse_home() itself has no auth gate, an anonymous user never sees
+    // this, but a signed-in user's expired cookie can still produce a real
+    // needs_auth/401 here (the request still carries whatever cookie is
+    // stored). Surfacing the backend's own message, same pattern the
+    // library view uses, distinguishes that case from a generic failure.
     expect(root.textContent).toContain("not authenticated");
   });
 });
