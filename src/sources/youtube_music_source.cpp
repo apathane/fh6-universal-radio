@@ -968,6 +968,15 @@ YouTubeMusicSource::search_catalog(const std::string& query) const {
     return client->search(query);
 }
 
+ytmusic::Result<std::vector<ytmusic::SearchResultItem>> YouTubeMusicSource::home_feed() const {
+    std::shared_ptr<const ytmusic::InnertubeClient> client;
+    {
+        std::scoped_lock client_lk{client_mtx_};
+        client = client_;
+    }
+    return client->browse_home();
+}
+
 ytmusic::Result<ytmusic::LibrarySnapshot> YouTubeMusicSource::library_snapshot() const {
     std::shared_ptr<const ytmusic::InnertubeClient> client;
     {

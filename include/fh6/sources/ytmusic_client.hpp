@@ -61,6 +61,11 @@ public:
     explicit InnertubeClient(std::filesystem::path cookies_path);
 
     Result<std::vector<SearchResultItem>> search(const std::string& query) const;
+    // Innertube's home feed ("FEmusic_home"): quick picks, moods & genres,
+    // new releases, etc, flattened into one list (songs and playlists mixed,
+    // same shape as search() results). Works unauthenticated, same as
+    // search(); an account only changes which content Innertube returns.
+    Result<std::vector<SearchResultItem>> browse_home() const;
     Result<std::vector<QueueTrack>> browse_playlist(const std::string& browse_id) const;
     Result<LibrarySnapshot> browse_library() const;
     Result<std::vector<QueueTrack>> next(const std::string& video_id) const;

@@ -1023,6 +1023,22 @@ struct HttpServer::Impl {
             }
             return ok(json{{"results", items}});
         }
+        if (m == "GET" && p == "/api/source/youtube_music/home") {
+            auto* yt = find_typed<sources::YouTubeMusicSource>("youtube_music");
+            if (!yt) return fail(404, "youtube_music not registered");
+            auto r = yt->home_feed();
+            if (r.status == ytmusic::InnertubeStatus::needs_auth) return fail(401, "not authenticated");
+            if (!r.ok()) return fail(502, "home feed failed");
+            json items = json::array();
+            for (auto& it : r.value) {
+                items.push_back(json{{"video_id", it.video_id},
+                                     {"browse_id", it.browse_id},
+                                     {"title", it.title},
+                                     {"subtitle", it.subtitle},
+                                     {"thumbnail_url", it.thumbnail_url}});
+            }
+            return ok(json{{"results", items}});
+        }
         if (m == "GET" && p == "/api/source/youtube_music/library") {
             auto* yt = find_typed<sources::YouTubeMusicSource>("youtube_music");
             if (!yt) return fail(404, "youtube_music not registered");

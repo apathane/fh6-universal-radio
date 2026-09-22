@@ -236,6 +236,64 @@ Result<std::vector<SearchResultItem>> InnertubeClient::search(const std::string&
     }
 }
 
+Result<std::vector<SearchResultItem>> InnertubeClient::browse_home() const {
+    try {
+        json body = {{"context", json::parse(kContext)}, {"browseId", "FEmusic_home"}};
+        const std::string resp = post("/youtubei/v1/browse", body.dump());
+        if (resp.empty()) return {InnertubeStatus::network_error, {}};
+
+        auto root = json::parse(resp);
+        if (looks_unauthenticated(root)) return {InnertubeStatus::needs_auth, {}};
+
+        std::vector<SearchResultItem> out;
+
+        // Song rows (e.g. "Quick picks") render as list items, same shape
+        // search() already extracts.
+        std::vector<json> rows;
+        collect_objects(root, "musicResponsiveListItemRenderer", rows);
+        for (auto& item : rows) {
+            SearchResultItem it;
+            it.video_id = first_string(item, "videoId");
+            it.browse_id = first_string(item, "browseId");
+            it.thumbnail_url = best_thumbnail(item);
+
+            std::vector<std::string> texts;
+            collect_strings(item, "text", texts);
+            if (!texts.empty()) it.title = texts.front();
+            for (std::size_t i = 1; i < texts.size(); ++i) {
+                if (!it.subtitle.empty()) it.subtitle += ' ';
+                it.subtitle += texts[i];
+            }
+            if (!it.video_id.empty() || !it.browse_id.empty()) out.push_back(std::move(it));
+        }
+
+        // Playlists/albums/mixes (e.g. "Moods & genres", "New releases")
+        // render as grid tiles, same shape browse_library()'s playlist grid
+        // already extracts.
+        std::vector<json> tiles;
+        collect_objects(root, "musicTwoRowItemRenderer", tiles);
+        for (auto& tile : tiles) {
+            SearchResultItem it;
+            it.browse_id = first_string(tile, "browseId");
+            if (it.browse_id.empty()) continue;
+            it.thumbnail_url = best_thumbnail(tile);
+            std::vector<std::string> texts;
+            collect_strings(tile, "text", texts);
+            if (!texts.empty()) it.title = texts.front();
+            for (std::size_t i = 1; i < texts.size(); ++i) {
+                if (!it.subtitle.empty()) it.subtitle += ' ';
+                it.subtitle += texts[i];
+            }
+            out.push_back(std::move(it));
+        }
+
+        return {InnertubeStatus::ok, std::move(out)};
+    } catch (const std::exception& e) {
+        log::warn("[ytmusic] browse_home parse failed: {}", e.what());
+        return {InnertubeStatus::parse_error, {}};
+    }
+}
+
 Result<std::vector<QueueTrack>> InnertubeClient::browse_playlist(const std::string& browse_id) const {
     try {
         json body = {{"context", json::parse(kContext)}, {"browseId", browse_id}};

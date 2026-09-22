@@ -54,6 +54,7 @@ export const api = {
 		cast: url => request("/api/source/youtube_music/cast", { method: "POST", body: { url } }),
 		shuffle: shuffle => request("/api/source/youtube_music/shuffle", { method: "POST", body: { shuffle } }),
 		search: query => request(`/api/source/youtube_music/search?q=${encodeURIComponent(query)}`),
+		home: () => request("/api/source/youtube_music/home"),
 		library: () => request("/api/source/youtube_music/library"),
 		castLibraryPlaylist: browseId =>
 			request("/api/source/youtube_music/library/cast", { method: "POST", body: { browse_id: browseId } }),

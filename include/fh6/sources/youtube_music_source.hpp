@@ -87,6 +87,7 @@ public:
     // Account/catalog metadata, backed by Innertube. Never touches the audio
     // pipeline; safe to call from the HTTP thread while playback runs.
     ytmusic::Result<std::vector<ytmusic::SearchResultItem>> search_catalog(const std::string& query) const;
+    ytmusic::Result<std::vector<ytmusic::SearchResultItem>> home_feed() const;
     ytmusic::Result<ytmusic::LibrarySnapshot> library_snapshot() const;
     ytmusic::Result<std::string> track_lyrics(const std::string& video_id) const;
 

@@ -252,8 +252,10 @@
   "ytmusic.radio.empty": "Start a radio from any search result to see it here.",
   "ytmusic.radio.now_playing": "Now in your radio",
 
-  "ytmusic.home.empty": "Search for something to get started, or browse your library.",
   "ytmusic.home.up_next": "Up next",
+  "ytmusic.home.loading": "Loading...",
+  "ytmusic.home.browse_empty": "Nothing to show right now.",
+  "ytmusic.home.browse_error": "Could not load, try again.",
 
   "ytmusic.lyrics.open": "Lyrics",
   "ytmusic.lyrics.loading": "Loading lyrics...",
