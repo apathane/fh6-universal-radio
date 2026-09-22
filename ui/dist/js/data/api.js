@@ -53,6 +53,15 @@ export const api = {
 		...sourceApi("youtube_music"),
 		cast: url => request("/api/source/youtube_music/cast", { method: "POST", body: { url } }),
 		shuffle: shuffle => request("/api/source/youtube_music/shuffle", { method: "POST", body: { shuffle } }),
+		search: query => request(`/api/source/youtube_music/search?q=${encodeURIComponent(query)}`),
+		library: () => request("/api/source/youtube_music/library"),
+		castLibraryPlaylist: browseId =>
+			request("/api/source/youtube_music/library/cast", { method: "POST", body: { browse_id: browseId } }),
+		playTrack: videoId =>
+			request("/api/source/youtube_music/play_track", { method: "POST", body: { video_id: videoId } }),
+		radio: videoId =>
+			request("/api/source/youtube_music/radio", { method: "POST", body: { video_id: videoId } }),
+		lyrics: videoId => request(`/api/source/youtube_music/lyrics?video_id=${encodeURIComponent(videoId)}`),
 	},
 
 	// Jellyfin

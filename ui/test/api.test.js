@@ -65,6 +65,44 @@ describe("api endpoints", () => {
     });
   });
 
+  it("youtube_music search/library/radio/lyrics carry the right method and path", async () => {
+    await api.youtubeMusic.search("lofi beats");
+    expect(lastCall()).toMatchObject({
+      path: "/api/source/youtube_music/search?q=lofi%20beats",
+      method: "GET",
+    });
+
+    await api.youtubeMusic.library();
+    expect(lastCall()).toMatchObject({ path: "/api/source/youtube_music/library", method: "GET" });
+
+    await api.youtubeMusic.castLibraryPlaylist("VLabc123");
+    expect(lastCall()).toMatchObject({
+      path: "/api/source/youtube_music/library/cast",
+      method: "POST",
+      body: { browse_id: "VLabc123" },
+    });
+
+    await api.youtubeMusic.playTrack("dQw4w9WgXcQ");
+    expect(lastCall()).toMatchObject({
+      path: "/api/source/youtube_music/play_track",
+      method: "POST",
+      body: { video_id: "dQw4w9WgXcQ" },
+    });
+
+    await api.youtubeMusic.radio("dQw4w9WgXcQ");
+    expect(lastCall()).toMatchObject({
+      path: "/api/source/youtube_music/radio",
+      method: "POST",
+      body: { video_id: "dQw4w9WgXcQ" },
+    });
+
+    await api.youtubeMusic.lyrics("dQw4w9WgXcQ");
+    expect(lastCall()).toMatchObject({
+      path: "/api/source/youtube_music/lyrics?video_id=dQw4w9WgXcQ",
+      method: "GET",
+    });
+  });
+
   it("castOnlineRadio carries url plus optional name/logo", async () => {
     await api.castOnlineRadio("https://stream");
     expect(lastCall()).toMatchObject({
