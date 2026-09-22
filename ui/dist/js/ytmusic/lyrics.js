@@ -10,7 +10,7 @@ import { t } from "../i18n.js";
 export function createLyricsPanel() {
     const titleEl = el("h3", {});
     const bodyEl = el("pre", { class: "yt-lyrics-body" });
-    const closeBtn = el("button", { type: "button", class: "icon-btn", "aria-label": t("btn.close") ?? "Close" }, "×");
+    const closeBtn = el("button", { type: "button", class: "icon-btn", "aria-label": t("settings.close") }, "×");
 
     const root = el("div", { class: "yt-lyrics-panel", hidden: true }, [
         el("div", { class: "yt-lyrics-head" }, [titleEl, closeBtn]),

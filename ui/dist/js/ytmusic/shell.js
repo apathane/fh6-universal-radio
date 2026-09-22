@@ -36,6 +36,7 @@ export function createYtMusicShell() {
         for (const [key, btn] of railButtons) btn.classList.toggle("on", key === id);
         for (const [key, btn] of tabButtons) btn.classList.toggle("on", key === id);
         for (const [key, view] of Object.entries(views)) view.root.hidden = key !== id;
+        lyricsPanel.root.hidden = true;
     }
 
     for (const [id, labelKey] of TABS) {
