@@ -14,6 +14,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace fh6::sources {
@@ -133,6 +134,10 @@ private:
     std::shared_ptr<const ytmusic::InnertubeClient> client_;
     std::filesystem::path cache_dir_;
     std::atomic<bool> cache_refreshing_{false};
+    // Owns the background refresh thread rather than detaching it, so the
+    // destructor can join it and avoid a use-after-free if the source is
+    // destroyed while a refresh is in flight (the thread captures `this`).
+    std::thread cache_refresh_thread_;
     std::unique_ptr<Pipe> pipe_;
     std::unique_ptr<Pipe> prefetch_; // pre-spawned next-track pipeline (or null)
 

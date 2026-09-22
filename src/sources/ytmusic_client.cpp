@@ -7,6 +7,7 @@
 
 #include <fstream>
 #include <format>
+#include <string_view>
 
 namespace fh6::ytmusic {
 
@@ -15,22 +16,39 @@ namespace {
 using json = nlohmann::json;
 
 // Netscape cookies.txt: tab-separated domain, includeSubdomains, path,
-// secure, expiry, name, value; "#"-prefixed lines are comments. Only
-// youtube.com-scoped cookies are relevant here.
+// secure, expiry, name, value; "#"-prefixed lines are comments, EXCEPT
+// HttpOnly cookies (SID, HSID, SSID, __Secure-*PSID, ...) which a standard
+// browser export prefixes with "#HttpOnly_" instead of omitting -- those are
+// exactly the login cookies, so treating every "#" line as a comment silently
+// drops authentication and the account library never loads. Strip that
+// prefix before the comment check instead. Lines may also carry a trailing
+// \r (Windows-exported files); left in place, it rides along into the last
+// column's value and corrupts the Cookie header for every request.
 std::string load_cookie_header(const std::filesystem::path& path) {
     if (path.empty()) return {};
     std::ifstream in{path};
     if (!in) return {};
 
+    constexpr std::string_view kHttpOnlyPrefix = "#HttpOnly_";
+
     std::string out;
     std::string line;
     while (std::getline(in, line)) {
-        if (line.empty() || line.front() == '#') continue;
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.empty()) continue;
+
+        std::string_view row = line;
+        if (row.substr(0, kHttpOnlyPrefix.size()) == kHttpOnlyPrefix) {
+            row.remove_prefix(kHttpOnlyPrefix.size());
+        } else if (row.front() == '#') {
+            continue;
+        }
+
         std::vector<std::string> cols;
         std::size_t start = 0;
-        for (std::size_t i = 0; i <= line.size(); ++i) {
-            if (i == line.size() || line[i] == '\t') {
-                cols.push_back(line.substr(start, i - start));
+        for (std::size_t i = 0; i <= row.size(); ++i) {
+            if (i == row.size() || row[i] == '\t') {
+                cols.emplace_back(row.substr(start, i - start));
                 start = i + 1;
             }
         }
@@ -167,7 +185,12 @@ std::string InnertubeClient::post(std::string_view endpoint, const std::string& 
     std::vector<std::string> headers = {"Origin: https://music.youtube.com"};
     if (!cookie_header_.empty()) headers.push_back("Cookie: " + cookie_header_);
     auto resp = net::http_post(url, body_json, headers);
-    return resp.value_or(std::string{});
+    // http_post() returns a body for a completed exchange regardless of HTTP
+    // status (network failure is the only case with no body at all), so a
+    // real 401/403 auth failure still reaches looks_unauthenticated() below
+    // via its standard Innertube error JSON payload, the same as the
+    // already-handled case of a 200 response carrying an error object.
+    return resp.body.value_or(std::string{});
 }
 
 Result<std::vector<SearchResultItem>> InnertubeClient::search(const std::string& query) const {

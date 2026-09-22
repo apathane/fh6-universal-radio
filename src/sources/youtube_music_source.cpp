@@ -93,7 +93,10 @@ YouTubeMusicSource::YouTubeMusicSource(YouTubeMusicConfig cfg, std::filesystem::
     std::filesystem::create_directories(cache_dir_, ec);
 }
 
-YouTubeMusicSource::~YouTubeMusicSource() { stop_pipe_locked(); }
+YouTubeMusicSource::~YouTubeMusicSource() {
+    stop_pipe_locked();
+    if (cache_refresh_thread_.joinable()) cache_refresh_thread_.join();
+}
 
 const YouTubeStation* YouTubeMusicSource::active_station_locked() const noexcept {
     if (cfg_.stations.empty()) return nullptr;
@@ -847,14 +850,20 @@ void YouTubeMusicSource::refresh_cache_in_background(std::string browse_id) {
     bool expected = false;
     if (!cache_refreshing_.compare_exchange_strong(expected, true)) return; // already refreshing
 
-    std::thread([this, browse_id = std::move(browse_id)]() {
+    // cache_refreshing_'s CAS guarantees the previous refresh thread (if any)
+    // has already finished its work by the time we get here, so this join
+    // never blocks meaningfully; it just reclaims the thread object so we
+    // can safely reassign it instead of detaching (see the destructor).
+    if (cache_refresh_thread_.joinable()) cache_refresh_thread_.join();
+
+    cache_refresh_thread_ = std::thread([this, browse_id = std::move(browse_id)]() {
         std::shared_ptr<const ytmusic::InnertubeClient> client;
         {
             std::scoped_lock client_lk{client_mtx_};
             client = client_;
         }
         auto result = client->browse_playlist(browse_id);
-        if (result.ok()) {
+        if (result.ok() && !result.value.empty()) {
             save_cached_queue(browse_id, result.value);
             std::scoped_lock lk{mu_};
             // Only swap the live queue in if we are still on this playlist;
@@ -872,7 +881,7 @@ void YouTubeMusicSource::refresh_cache_in_background(std::string browse_id) {
             log::warn("[yt] background library refresh failed for {}", browse_id);
         }
         cache_refreshing_.store(false, std::memory_order_release);
-    }).detach();
+    });
 }
 
 bool YouTubeMusicSource::cast_library_playlist(std::string browse_id) {
@@ -910,7 +919,11 @@ bool YouTubeMusicSource::cast_library_playlist(std::string browse_id) {
     }
     queue_idx_ = 0;
     queue_built_for_ = browse_id;
-    target_url_.clear();
+    // Mirror queue_built_for_ into target_url_ (rather than clearing it) so
+    // resolve_queue_locked()'s effective_url == queue_built_for_ check keeps
+    // the queue we just built instead of falling back to the active saved
+    // station and re-resolving it with yt-dlp on the next start_pipe_locked().
+    target_url_ = queue_built_for_;
     start_pipe_locked();
     if (pipe_) state_.store(PlaybackState::playing, std::memory_order_release);
     return static_cast<bool>(pipe_);
@@ -939,7 +952,7 @@ bool YouTubeMusicSource::start_radio(std::string seed_video_id) {
     }
     queue_idx_ = 0;
     queue_built_for_ = "radio:" + seed_video_id; // never matches a real browse_id, cache-exempt
-    target_url_.clear();
+    target_url_ = queue_built_for_; // see cast_library_playlist() for why this mirrors queue_built_for_
     start_pipe_locked();
     if (pipe_) state_.store(PlaybackState::playing, std::memory_order_release);
     return static_cast<bool>(pipe_);
