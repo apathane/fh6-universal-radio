@@ -8,3 +8,6 @@ include/stb
 
 # Dependency directories
 node_modules/
+
+# Scratch workspace for superpowers subagent-driven-development plans
+.superpowers/
