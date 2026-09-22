@@ -249,6 +249,9 @@
   "ytmusic.library.empty": "Nothing here yet.",
   "ytmusic.library.error": "Could not load your library.",
 
+  "ytmusic.radio.empty": "Start a radio from any search result to see it here.",
+  "ytmusic.radio.now_playing": "Now in your radio",
+
   // ─── Jellyfin card ──────────────────────────────────────────────────────
   "jellyfin.title": "Jellyfin",
   "jellyfin.description": "Enter a Jellyfin Playlist ID. The radio switches source and starts streaming immediately.",
