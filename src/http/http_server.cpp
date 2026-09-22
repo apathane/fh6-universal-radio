@@ -6,6 +6,7 @@
 #include "fh6/log.hpp"
 #include "fh6/sources/local_file_source.hpp"
 #include "fh6/sources/youtube_music_source.hpp"
+#include "fh6/sources/ytmusic_client.hpp"
 #include "fh6/sources/jellyfin_source.hpp"
 #include "fh6/sources/external_audio_source.hpp"
 #include "fh6/sources/external_media_session.hpp"
@@ -497,6 +498,33 @@ constexpr std::string_view mime_for(std::string_view path) noexcept {
     return "text/plain";
 }
 
+// Minimal percent-decoder for query-string values. The rest of this file's
+// routes take their input from the JSON body; the new search/lyrics GET
+// routes are the first to need a query string.
+std::string url_decode(std::string_view s) {
+    std::string out;
+    out.reserve(s.size());
+    for (std::size_t i = 0; i < s.size(); ++i) {
+        if (s[i] == '%' && i + 2 < s.size()) {
+            auto hex = [](char c) -> int {
+                if (c >= '0' && c <= '9') return c - '0';
+                if (c >= 'a' && c <= 'f') return 10 + c - 'a';
+                if (c >= 'A' && c <= 'F') return 10 + c - 'A';
+                return -1;
+            };
+            const int hi = hex(s[i + 1]);
+            const int lo = hex(s[i + 2]);
+            if (hi >= 0 && lo >= 0) {
+                out += static_cast<char>((hi << 4) | lo);
+                i += 2;
+                continue;
+            }
+        }
+        out += (s[i] == '+') ? ' ' : s[i];
+    }
+    return out;
+}
+
 size_t header_size_t(std::string_view headers, std::string_view name_lower) {
     for (size_t i = 0; i + name_lower.size() < headers.size(); ++i) {
         bool match = true;
@@ -975,6 +1003,99 @@ struct HttpServer::Impl {
             if (was_active) mgr.ring().drain();
             mgr.switch_to("youtube_music");
             return ok();
+        }
+        if (m == "GET" && p.starts_with("/api/source/youtube_music/search")) {
+            auto* yt = find_typed<sources::YouTubeMusicSource>("youtube_music");
+            if (!yt) return fail(404, "youtube_music not registered");
+            std::string q;
+            if (auto pos = p.find("?q="); pos != std::string::npos) q = url_decode(p.substr(pos + 3));
+            if (q.empty()) return fail(400, "q required");
+            auto r = yt->search_catalog(q);
+            if (r.status == ytmusic::InnertubeStatus::needs_auth) return fail(401, "not authenticated");
+            if (!r.ok()) return fail(502, "search failed");
+            json items = json::array();
+            for (auto& it : r.value) {
+                items.push_back(json{{"video_id", it.video_id},
+                                     {"browse_id", it.browse_id},
+                                     {"title", it.title},
+                                     {"subtitle", it.subtitle},
+                                     {"thumbnail_url", it.thumbnail_url}});
+            }
+            return ok(json{{"results", items}});
+        }
+        if (m == "GET" && p == "/api/source/youtube_music/library") {
+            auto* yt = find_typed<sources::YouTubeMusicSource>("youtube_music");
+            if (!yt) return fail(404, "youtube_music not registered");
+            auto r = yt->library_snapshot();
+            if (r.status == ytmusic::InnertubeStatus::needs_auth) return fail(401, "not authenticated");
+            if (!r.ok()) return fail(502, "library fetch failed");
+            auto tracks_json = [](const std::vector<ytmusic::QueueTrack>& v) {
+                json a = json::array();
+                for (auto& t : v)
+                    a.push_back(json{{"video_id", t.video_id},
+                                     {"title", t.title},
+                                     {"artist", t.artist},
+                                     {"thumbnail_url", t.thumbnail_url},
+                                     {"duration_ms", t.duration_ms}});
+                return a;
+            };
+            auto playlists_json = [](const std::vector<ytmusic::LibraryPlaylist>& v) {
+                json a = json::array();
+                for (auto& pl : v)
+                    a.push_back(json{{"browse_id", pl.browse_id},
+                                     {"title", pl.title},
+                                     {"thumbnail_url", pl.thumbnail_url}});
+                return a;
+            };
+            return ok(json{{"liked_songs", tracks_json(r.value.liked_songs)},
+                           {"playlists", playlists_json(r.value.playlists)},
+                           {"subscriptions", playlists_json(r.value.subscriptions)}});
+        }
+        if (m == "POST" && p == "/api/source/youtube_music/library/cast") {
+            auto* yt = find_typed<sources::YouTubeMusicSource>("youtube_music");
+            if (!yt) return fail(404, "youtube_music not registered");
+            auto browse_id = json::parse(req.body).at("browse_id").get<std::string>();
+            if (browse_id.empty()) return fail(400, "browse_id required");
+            const bool was_active = (mgr.active() == yt);
+            if (!yt->cast_library_playlist(browse_id)) return fail(502, "playlist fetch failed");
+            if (was_active) mgr.ring().drain();
+            mgr.switch_to("youtube_music");
+            return ok();
+        }
+        if (m == "POST" && p == "/api/source/youtube_music/play_track") {
+            auto* yt = find_typed<sources::YouTubeMusicSource>("youtube_music");
+            if (!yt) return fail(404, "youtube_music not registered");
+            auto video_id = json::parse(req.body).at("video_id").get<std::string>();
+            if (video_id.empty()) return fail(400, "video_id required");
+            const bool was_active = (mgr.active() == yt);
+            yt->stop();
+            yt->set_target("https://www.youtube.com/watch?v=" + video_id);
+            if (was_active) mgr.ring().drain();
+            yt->play();
+            mgr.switch_to("youtube_music");
+            return ok();
+        }
+        if (m == "POST" && p == "/api/source/youtube_music/radio") {
+            auto* yt = find_typed<sources::YouTubeMusicSource>("youtube_music");
+            if (!yt) return fail(404, "youtube_music not registered");
+            auto video_id = json::parse(req.body).at("video_id").get<std::string>();
+            if (video_id.empty()) return fail(400, "video_id required");
+            const bool was_active = (mgr.active() == yt);
+            if (!yt->start_radio(video_id)) return fail(502, "radio failed");
+            if (was_active) mgr.ring().drain();
+            mgr.switch_to("youtube_music");
+            return ok();
+        }
+        if (m == "GET" && p.starts_with("/api/source/youtube_music/lyrics")) {
+            auto* yt = find_typed<sources::YouTubeMusicSource>("youtube_music");
+            if (!yt) return fail(404, "youtube_music not registered");
+            std::string video_id;
+            if (auto pos = p.find("?video_id="); pos != std::string::npos)
+                video_id = url_decode(p.substr(pos + 10));
+            if (video_id.empty()) return fail(400, "video_id required");
+            auto r = yt->track_lyrics(video_id);
+            if (!r.ok()) return ok(json{{"lyrics", ""}}); // not found is not an error, per the design doc
+            return ok(json{{"lyrics", r.value}});
         }
         if (m == "POST" && p == "/api/source/jellyfin/cast") {
             auto* jf = find_typed<sources::JellyfinSource>("jellyfin");
