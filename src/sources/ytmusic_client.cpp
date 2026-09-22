@@ -207,11 +207,90 @@ Result<std::vector<SearchResultItem>> InnertubeClient::search(const std::string&
     }
 }
 
-Result<std::vector<QueueTrack>> InnertubeClient::browse_playlist(const std::string&) const {
-    return {InnertubeStatus::parse_error, {}};
+Result<std::vector<QueueTrack>> InnertubeClient::browse_playlist(const std::string& browse_id) const {
+    try {
+        json body = {{"context", json::parse(kContext)}, {"browseId", browse_id}};
+        const std::string resp = post("/youtubei/v1/browse", body.dump());
+        if (resp.empty()) return {InnertubeStatus::network_error, {}};
+
+        auto root = json::parse(resp);
+        if (looks_unauthenticated(root)) return {InnertubeStatus::needs_auth, {}};
+
+        std::vector<json> items;
+        collect_objects(root, "musicResponsiveListItemRenderer", items);
+
+        std::vector<QueueTrack> out;
+        out.reserve(items.size());
+        for (auto& item : items) {
+            QueueTrack t;
+            t.video_id = first_string(item, "videoId");
+            if (t.video_id.empty()) continue; // a header/non-playable row, not a track
+            t.thumbnail_url = best_thumbnail(item);
+
+            std::vector<std::string> texts;
+            collect_strings(item, "text", texts);
+            if (!texts.empty()) t.title = texts.front();
+            if (texts.size() > 1) t.artist = texts[1];
+            for (auto& s : texts) {
+                if (auto ms = parse_duration_to_ms(s); ms > 0) {
+                    t.duration_ms = ms;
+                    break;
+                }
+            }
+            out.push_back(std::move(t));
+        }
+        return {InnertubeStatus::ok, std::move(out)};
+    } catch (const std::exception& e) {
+        log::warn("[ytmusic] browse_playlist parse failed: {}", e.what());
+        return {InnertubeStatus::parse_error, {}};
+    }
 }
+
 Result<LibrarySnapshot> InnertubeClient::browse_library() const {
-    return {InnertubeStatus::parse_error, {}};
+    if (!authenticated()) return {InnertubeStatus::needs_auth, {}};
+
+    LibrarySnapshot snap;
+
+    // "LM" is Innertube's well-known fixed playlist id for the account's
+    // Liked Music auto-playlist (same constant ytmusicapi uses). Verify
+    // against a real logged-in account during manual testing per the design
+    // doc's Innertube-drift handling; adjust here if Google has since
+    // changed it.
+    if (auto liked = browse_playlist("VLLM"); liked.ok()) {
+        snap.liked_songs = std::move(liked.value);
+    } else if (liked.status == InnertubeStatus::needs_auth) {
+        return {InnertubeStatus::needs_auth, {}};
+    }
+
+    // "FEmusic_liked_playlists" is Innertube's fixed browse id for the
+    // account's playlist library grid. Same verify-and-adjust note as above.
+    try {
+        json body = {{"context", json::parse(kContext)}, {"browseId", "FEmusic_liked_playlists"}};
+        const std::string resp = post("/youtubei/v1/browse", body.dump());
+        if (resp.empty()) return {InnertubeStatus::network_error, {}};
+
+        auto root = json::parse(resp);
+        if (looks_unauthenticated(root)) return {InnertubeStatus::needs_auth, {}};
+
+        // Playlist library tiles use musicTwoRowItemRenderer (a grid card),
+        // not musicResponsiveListItemRenderer (a list row).
+        std::vector<json> tiles;
+        collect_objects(root, "musicTwoRowItemRenderer", tiles);
+        for (auto& tile : tiles) {
+            LibraryPlaylist p;
+            p.browse_id = first_string(tile, "browseId");
+            if (p.browse_id.empty()) continue;
+            p.thumbnail_url = best_thumbnail(tile);
+            std::vector<std::string> texts;
+            collect_strings(tile, "text", texts);
+            if (!texts.empty()) p.title = texts.front();
+            snap.playlists.push_back(std::move(p));
+        }
+        return {InnertubeStatus::ok, std::move(snap)};
+    } catch (const std::exception& e) {
+        log::warn("[ytmusic] browse_library parse failed: {}", e.what());
+        return {InnertubeStatus::parse_error, {}};
+    }
 }
 Result<std::vector<QueueTrack>> InnertubeClient::next(const std::string&) const {
     return {InnertubeStatus::parse_error, {}};
