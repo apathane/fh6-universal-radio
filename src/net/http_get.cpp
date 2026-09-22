@@ -150,4 +150,109 @@ std::optional<std::string> http_get(std::string_view url, std::string_view extra
     return body;
 }
 
+std::optional<std::string> http_post(std::string_view url, std::string_view json_body,
+                                     const std::vector<std::string>& extra_headers) {
+    std::wstring wurl = subprocess::widen(std::string(url));
+
+    URL_COMPONENTS urlComp = {0};
+    urlComp.dwStructSize = sizeof(urlComp);
+    urlComp.dwHostNameLength = static_cast<DWORD>(-1);
+    urlComp.dwUrlPathLength = static_cast<DWORD>(-1);
+    urlComp.dwExtraInfoLength = static_cast<DWORD>(-1);
+
+    if (!WinHttpCrackUrl(wurl.c_str(), 0, 0, &urlComp)) {
+        log::error("[http] WinHttpCrackUrl failed for POST {}", std::string(url));
+        return std::nullopt;
+    }
+
+    std::wstring hostName{urlComp.lpszHostName, urlComp.dwHostNameLength};
+    std::wstring requestTarget{urlComp.lpszUrlPath, urlComp.dwUrlPathLength};
+    if (urlComp.dwExtraInfoLength > 0 && urlComp.lpszExtraInfo)
+        requestTarget.append(urlComp.lpszExtraInfo, urlComp.dwExtraInfoLength);
+    if (requestTarget.empty()) requestTarget = L"/";
+
+    HINTERNET hSession = WinHttpOpen(L"FH6 Universal Radio/1.0",
+                                     WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+                                     WINHTTP_NO_PROXY_NAME,
+                                     WINHTTP_NO_PROXY_BYPASS, 0);
+    if (!hSession) {
+        log::error("[http] WinHttpOpen failed (POST)");
+        return std::nullopt;
+    }
+    WinHttpSetTimeouts(hSession, 5000, 10000, 10000, 15000);
+
+    struct SessionGuard {
+        HINTERNET h;
+        ~SessionGuard() { if (h) WinHttpCloseHandle(h); }
+    } sg{hSession};
+
+    HINTERNET hConnect = WinHttpConnect(hSession, hostName.c_str(), urlComp.nPort, 0);
+    if (!hConnect) {
+        log::error("[http] WinHttpConnect failed (POST)");
+        return std::nullopt;
+    }
+    SessionGuard cg{hConnect};
+
+    DWORD flags = (urlComp.nScheme == INTERNET_SCHEME_HTTPS) ? WINHTTP_FLAG_SECURE : 0;
+    HINTERNET hRequest = WinHttpOpenRequest(hConnect, L"POST", requestTarget.c_str(),
+                                            nullptr, WINHTTP_NO_REFERER,
+                                            WINHTTP_DEFAULT_ACCEPT_TYPES, flags);
+    if (!hRequest) {
+        log::error("[http] WinHttpOpenRequest failed (POST)");
+        return std::nullopt;
+    }
+    SessionGuard rg{hRequest};
+
+    std::wstring headers = L"Content-Type: application/json\r\n";
+    for (const auto& h : extra_headers) {
+        headers += subprocess::widen(h);
+        headers += L"\r\n";
+    }
+
+    std::string body{json_body};
+    if (!WinHttpSendRequest(hRequest, headers.c_str(), static_cast<DWORD>(-1),
+                            body.empty() ? WINHTTP_NO_REQUEST_DATA : body.data(),
+                            static_cast<DWORD>(body.size()), static_cast<DWORD>(body.size()), 0)) {
+        log::error("[http] WinHttpSendRequest failed (POST)");
+        return std::nullopt;
+    }
+
+    if (!WinHttpReceiveResponse(hRequest, nullptr)) {
+        log::error("[http] WinHttpReceiveResponse failed (POST)");
+        return std::nullopt;
+    }
+
+    DWORD statusCode = 0, dwSize = sizeof(statusCode);
+    WinHttpQueryHeaders(hRequest, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+                        WINHTTP_HEADER_NAME_BY_INDEX, &statusCode, &dwSize, WINHTTP_NO_HEADER_INDEX);
+    if (statusCode < 200 || statusCode >= 300) {
+        log::error("[http] Non-2xx HTTP Response ({}) for POST {}", statusCode, std::string(url));
+        return std::nullopt;
+    }
+
+    constexpr std::size_t kMaxHttpBodyBytes = 10 * 1024 * 1024;
+    std::string responseBody;
+    DWORD dwDownloaded = 0;
+    do {
+        DWORD dwAvailable = 0;
+        if (!WinHttpQueryDataAvailable(hRequest, &dwAvailable)) {
+            log::error("[http] WinHttpQueryDataAvailable failed (POST)");
+            return std::nullopt;
+        }
+        if (dwAvailable == 0) break;
+        if (dwAvailable > kMaxHttpBodyBytes - responseBody.size()) {
+            log::error("[http] POST response exceeded maximum download size");
+            return std::nullopt;
+        }
+        std::vector<char> buffer(dwAvailable);
+        if (!WinHttpReadData(hRequest, buffer.data(), dwAvailable, &dwDownloaded)) {
+            log::error("[http] WinHttpReadData failed (POST)");
+            return std::nullopt;
+        }
+        responseBody.append(buffer.data(), dwDownloaded);
+    } while (dwDownloaded > 0);
+
+    return responseBody;
+}
+
 } // namespace fh6::net
