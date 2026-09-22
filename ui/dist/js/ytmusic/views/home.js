@@ -1,7 +1,8 @@
 import { el } from "../../lib/dom.js";
 import { api } from "../../data/api.js";
 import { t } from "../../i18n.js";
-import { getQueue, onQueueChange, playTrack, playLibraryPlaylist, startRadio } from "../queue.js";
+import { getQueue, onQueueChange } from "../queue.js";
+import { itemRow, itemTile, splitResults } from "../itemRow.js";
 
 export function createHome() {
     const body = el("div", { class: "yt-home-body" });
@@ -9,34 +10,6 @@ export function createHome() {
 
     let browseLoaded = false;
     let browseFetchInFlight = false;
-
-    function resultRow(item) {
-        const row = el("div", { class: "yt-search-row" }, [
-            el("span", { class: "yt-search-title" }, item.title),
-            item.subtitle ? el("span", { class: "yt-search-subtitle muted" }, item.subtitle) : null,
-        ].filter(Boolean));
-
-        if (item.video_id) {
-            // A song: click plays it directly, works with or without an
-            // account (search()/browse_playlist() don't require auth).
-            row.classList.add("clickable");
-            row.addEventListener("click", () => playTrack(item.video_id, item.title));
-
-            const radioBtn = el("button", { type: "button", class: "btn ghost yt-radio-btn" }, t("ytmusic.start_radio"));
-            radioBtn.addEventListener("click", e => {
-                e.stopPropagation();
-                startRadio(item.video_id, item.title);
-            });
-            row.append(radioBtn);
-        } else if (item.browse_id) {
-            // A playlist/album/mix: click casts it. Public playlists cast
-            // fine without an account too; a private one 401s the same way
-            // library casts already do.
-            row.classList.add("clickable");
-            row.addEventListener("click", () => playLibraryPlaylist(item.browse_id, item.title));
-        }
-        return row;
-    }
 
     async function loadBrowseFeed() {
         if (browseFetchInFlight) return;
@@ -49,7 +22,11 @@ export function createHome() {
                 body.replaceChildren(el("p", { class: "muted" }, t("ytmusic.home.browse_empty")));
                 return;
             }
-            body.replaceChildren(...items.map(resultRow));
+            const { songs, playlists } = splitResults(items);
+            body.replaceChildren(
+                ...songs.map(itemRow),
+                ...(playlists.length ? [el("div", { class: "yt-item-grid" }, playlists.map(itemTile))] : []),
+            );
         } catch (e) {
             // e.message surfaces the backend's actual text (e.g. "not
             // authenticated" for a signed-in user's expired cookie), same

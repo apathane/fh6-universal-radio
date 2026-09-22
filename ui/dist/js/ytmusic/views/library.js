@@ -1,7 +1,7 @@
 import { el } from "../../lib/dom.js";
 import { api } from "../../data/api.js";
 import { t } from "../../i18n.js";
-import { playLibraryPlaylist, playTrack } from "../queue.js";
+import { itemRow, itemTile } from "../itemRow.js";
 
 export function createLibrary() {
     const body = el("div", { class: "yt-library-body" });
@@ -9,31 +9,14 @@ export function createLibrary() {
 
     let loaded = false;
 
-    function playlistTile(pl) {
-        const tile = el("button", { type: "button", class: "yt-library-tile" }, [
-            el("span", { class: "yt-library-tile-title" }, pl.title),
-        ]);
-        tile.addEventListener("click", () => playLibraryPlaylist(pl.browse_id, pl.title));
-        return tile;
-    }
-
-    function trackRow(track) {
-        const row = el("div", { class: "yt-search-row clickable" }, [
-            el("span", { class: "yt-search-title" }, track.title),
-            el("span", { class: "yt-search-subtitle muted" }, track.artist),
-        ]);
-        row.addEventListener("click", () => playTrack(track.video_id, track.title));
-        return row;
-    }
-
     async function load() {
         try {
             const r = await api.youtubeMusic.library();
             body.replaceChildren(
                 el("h3", {}, t("ytmusic.library.liked_songs")),
-                ...(r.liked_songs || []).map(trackRow),
+                ...(r.liked_songs || []).map(itemRow),
                 el("h3", {}, t("ytmusic.library.playlists")),
-                el("div", { class: "yt-library-grid" }, (r.playlists || []).map(playlistTile)),
+                el("div", { class: "yt-item-grid" }, (r.playlists || []).map(itemTile)),
             );
             if (!r.liked_songs?.length && !r.playlists?.length) {
                 body.append(el("p", { class: "muted" }, t("ytmusic.library.empty")));

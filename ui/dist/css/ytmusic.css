@@ -106,7 +106,223 @@
     color: var(--text-strong);
 }
 
+#ytmusic-shell h3 {
+    font-size: var(--text-subheading);
+    font-weight: var(--font-weight-medium);
+    margin: var(--spacing-24) 0 var(--spacing-8);
+}
+
+#ytmusic-shell h3:first-child {
+    margin-top: 0;
+}
+
+/* Search input, shared by the search view's own box and reused visually
+   for anything text-entry-like in the takeover. */
+#ytmusic-shell .yt-search-input {
+    width: 100%;
+    padding: var(--spacing-12) var(--spacing-16);
+    border-radius: var(--radius-xl);
+    border: 1px solid var(--line);
+    background: var(--surface-card);
+    color: var(--text);
+    font-size: 1em;
+    margin-bottom: var(--spacing-16);
+}
+
+#ytmusic-shell .yt-search-input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+/* Song rows (search results, home feed, library liked songs): thumbnail,
+   title/subtitle, a Start Radio button that only shows on hover/focus so
+   the list stays clean at rest. Mirrors the existing .track/.track-cover
+   pattern from the Local Files card for visual consistency across the app. */
+#ytmusic-shell .yt-item-row,
+#ytmusic-shell .yt-search-row {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-12);
+    padding: var(--spacing-8) var(--spacing-8);
+    border-radius: var(--radius-md);
+    border-left: 2px solid transparent;
+}
+
+#ytmusic-shell .yt-item-row.clickable,
+#ytmusic-shell .yt-search-row.clickable {
+    cursor: pointer;
+}
+
+#ytmusic-shell .yt-item-row.clickable:hover,
+#ytmusic-shell .yt-search-row.clickable:hover {
+    background: var(--surface-raise);
+    border-left-color: var(--line-strong);
+}
+
+#ytmusic-shell .yt-item-thumb {
+    flex: none;
+    width: 40px;
+    height: 40px;
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    background: var(--surface-raise);
+    border: 1px solid var(--line);
+    position: relative;
+}
+
+#ytmusic-shell .yt-item-thumb-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+#ytmusic-shell .yt-item-thumb[data-noart]::after {
+    content: "\266A"; /* ♪ */
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    font-size: 16px;
+    background: var(--surface-raise);
+}
+
+#ytmusic-shell .yt-item-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+#ytmusic-shell .yt-item-title,
+#ytmusic-shell .yt-search-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#ytmusic-shell .yt-item-subtitle,
+#ytmusic-shell .yt-search-subtitle {
+    font-size: 0.85em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#ytmusic-shell .yt-radio-btn {
+    flex: none;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+#ytmusic-shell .yt-item-row:hover .yt-radio-btn,
+#ytmusic-shell .yt-item-row:focus-within .yt-radio-btn {
+    opacity: 1;
+}
+
+/* Playlist/album/mix tiles (search results, home feed, library playlists):
+   a grid of square art with a title underneath. */
+#ytmusic-shell .yt-item-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: var(--spacing-16);
+    margin-top: var(--spacing-8);
+}
+
+#ytmusic-shell .yt-item-tile {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-8);
+    padding: var(--spacing-8);
+    border-radius: var(--radius-md);
+    border: none;
+    background: transparent;
+    color: var(--text);
+    text-align: left;
+    cursor: pointer;
+}
+
+#ytmusic-shell .yt-item-tile:hover {
+    background: var(--surface-raise);
+}
+
+#ytmusic-shell .yt-item-tile-art {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    background: var(--surface-raise);
+    border: 1px solid var(--line);
+    position: relative;
+}
+
+#ytmusic-shell .yt-item-tile-art-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+#ytmusic-shell .yt-item-tile-art[data-noart]::after {
+    content: "\266A";
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    font-size: 28px;
+    background: var(--surface-raise);
+}
+
+#ytmusic-shell .yt-item-tile-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.9em;
+}
+
+/* Lyrics panel: a simple overlay card, closer to the search/library rows'
+   own surface language than the bare unstyled block it had before. */
+#ytmusic-shell .yt-lyrics-panel {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: min(600px, 90vw);
+    max-height: 80vh;
+    overflow-y: auto;
+    background: var(--surface-card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-xl);
+    padding: var(--spacing-24);
+    z-index: 60;
+}
+
+#ytmusic-shell .yt-lyrics-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-16);
+    margin-bottom: var(--spacing-16);
+}
+
+#ytmusic-shell .yt-lyrics-body {
+    white-space: pre-wrap;
+    font-family: inherit;
+    color: var(--text);
+    line-height: 1.6;
+}
+
 @media (max-width: 720px) {
+    #ytmusic-shell .yt-lyrics-panel {
+        width: 90vw;
+        max-height: 90vh;
+    }
+
     #ytmusic-shell {
         grid-template-columns: 1fr;
         grid-template-rows: 1fr auto auto;
