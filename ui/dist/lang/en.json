@@ -244,6 +244,11 @@
   "ytmusic.search.error": "Search failed, try again.",
   "ytmusic.start_radio": "Start radio",
 
+  "ytmusic.library.liked_songs": "Liked Songs",
+  "ytmusic.library.playlists": "Your Playlists",
+  "ytmusic.library.empty": "Nothing here yet.",
+  "ytmusic.library.error": "Could not load your library.",
+
   // ─── Jellyfin card ──────────────────────────────────────────────────────
   "jellyfin.title": "Jellyfin",
   "jellyfin.description": "Enter a Jellyfin Playlist ID. The radio switches source and starts streaming immediately.",
