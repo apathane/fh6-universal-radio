@@ -4,6 +4,7 @@
 #include "fh6/config.hpp"
 #include "fh6/worker/worker_client.hpp"
 #include "fh6/playback_dsp.hpp"
+#include "fh6/sources/ytmusic_client.hpp"
 
 #include <atomic>
 #include <cstddef>
@@ -11,6 +12,7 @@
 #include <filesystem>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -22,7 +24,7 @@ namespace fh6::sources {
 class YouTubeMusicSource final : public IAudioSource {
 public:
     YouTubeMusicSource(YouTubeMusicConfig cfg, std::filesystem::path ffmpeg_path,
-                        worker::WorkerClient* worker = nullptr);
+                        std::filesystem::path data_dir, worker::WorkerClient* worker = nullptr);
     ~YouTubeMusicSource() override;
 
     std::string_view name() const noexcept override { return "youtube_music"; }
@@ -81,6 +83,17 @@ public:
         return cfg_.shuffle;
     }
 
+    // Account/catalog metadata, backed by Innertube. Never touches the audio
+    // pipeline; safe to call from the HTTP thread while playback runs.
+    ytmusic::Result<std::vector<ytmusic::SearchResultItem>> search_catalog(const std::string& query) const;
+    ytmusic::Result<ytmusic::LibrarySnapshot> library_snapshot() const;
+    ytmusic::Result<std::string> track_lyrics(const std::string& video_id) const;
+
+    // Ephemeral plays: not persisted as a saved station (unlike
+    // set_active_station), mirrors set_target()'s one-off cast semantics.
+    bool cast_library_playlist(std::string browse_id);
+    bool start_radio(std::string seed_video_id);
+
 private:
     struct Pipe;
 
@@ -95,9 +108,26 @@ private:
     void maybe_spawn_prefetch_locked(); // called from pump() once current is healthy
     void drain_title_pipe_locked(Pipe* p);
 
+    // Innertube-resolved playlist cache. Keyed by browse_id, on disk at
+    // <data_dir>/ytmusic_cache/<browse_id>.json, TTL-refreshed in the
+    // background. Fixes the full yt-dlp --flat-playlist re-resolve every
+    // station reactivation used to cost.
+    struct CachedQueue {
+        std::vector<ytmusic::QueueTrack> tracks;
+        std::int64_t fetched_at_unix = 0;
+    };
+    std::optional<CachedQueue> load_cached_queue(const std::string& browse_id) const;
+    void save_cached_queue(const std::string& browse_id, const std::vector<ytmusic::QueueTrack>& tracks) const;
+    void refresh_cache_in_background(std::string browse_id);
+
     YouTubeMusicConfig cfg_;
     std::filesystem::path ffmpeg_path_;
     worker::WorkerClient* worker_;
+    // Declared after worker_ (and before pipe_) to match the constructor's
+    // member-init order: cfg_, ffmpeg_path_, worker_, client_, cache_dir_.
+    ytmusic::InnertubeClient client_;
+    std::filesystem::path cache_dir_;
+    std::atomic<bool> cache_refreshing_{false};
     std::unique_ptr<Pipe> pipe_;
     std::unique_ptr<Pipe> prefetch_; // pre-spawned next-track pipeline (or null)
 

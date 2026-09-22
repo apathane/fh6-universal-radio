@@ -190,6 +190,7 @@ void run_bridge(HMODULE self) noexcept {
         if (c.youtube_music.enabled && !mgr.find("youtube_music")) {
             auto src = std::make_unique<sources::YouTubeMusicSource>(c.youtube_music,
                                                                      c.general.ffmpeg_path,
+                                                                     data_dir,
                                                                      worker.get());
             if (src->initialize()) mgr.register_source(std::move(src));
         } else if (!c.youtube_music.enabled && mgr.find("youtube_music")) {

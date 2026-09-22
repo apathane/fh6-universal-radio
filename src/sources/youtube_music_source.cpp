@@ -2,13 +2,18 @@
 #include "fh6/log.hpp"
 #include "fh6/subprocess.hpp"
 
+#include <nlohmann/json.hpp>
+
 #include <windows.h>
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <fstream>
 #include <random>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace fh6::sources {
@@ -27,6 +32,8 @@ using subprocess::widen;
 
 // PCM contract written by ffmpeg: 48000 Hz * 2 ch * 2 bytes.
 constexpr std::uint64_t kPcmBytesPerSec = 48000ull * 2ull * 2ull;
+
+constexpr std::int64_t kQueueCacheTtlSeconds = 3600; // 1 h, per the design doc
 
 bool is_playlist_url(std::string_view url) {
     return url.find("playlist?") != std::string_view::npos ||
@@ -78,8 +85,12 @@ struct YouTubeMusicSource::Pipe {
 };
 
 YouTubeMusicSource::YouTubeMusicSource(YouTubeMusicConfig cfg, std::filesystem::path ffmpeg_path,
-                                       worker::WorkerClient* worker)
-    : cfg_{std::move(cfg)}, ffmpeg_path_{std::move(ffmpeg_path)}, worker_{worker} {}
+                                       std::filesystem::path data_dir, worker::WorkerClient* worker)
+    : cfg_{std::move(cfg)}, ffmpeg_path_{std::move(ffmpeg_path)}, worker_{worker},
+      client_{cfg_.cookies_path}, cache_dir_{data_dir / "ytmusic_cache"} {
+    std::error_code ec;
+    std::filesystem::create_directories(cache_dir_, ec);
+}
 
 YouTubeMusicSource::~YouTubeMusicSource() { stop_pipe_locked(); }
 
@@ -99,6 +110,10 @@ void YouTubeMusicSource::set_config(YouTubeMusicConfig cfg) {
         // preserve resolved path
         if (cfg.yt_dlp_path.empty() && !cfg_.yt_dlp_path.empty()) {
             cfg.yt_dlp_path = cfg_.yt_dlp_path;
+        }
+
+        if (cfg.cookies_path != cfg_.cookies_path) {
+            client_ = ytmusic::InnertubeClient{cfg.cookies_path};
         }
 
         cfg_ = std::move(cfg);
@@ -767,6 +782,162 @@ void YouTubeMusicSource::pump(RingBuffer& ring) {
     // its OS pipe buffer fills silently in the background (~5 s of PCM) and is
     // promoted on the next transition.
     maybe_spawn_prefetch_locked();
+}
+
+std::optional<YouTubeMusicSource::CachedQueue>
+YouTubeMusicSource::load_cached_queue(const std::string& browse_id) const {
+    const auto path = cache_dir_ / (browse_id + ".json");
+    std::ifstream in(path, std::ios::binary);
+    if (!in) return std::nullopt;
+    try {
+        nlohmann::json j;
+        in >> j;
+        CachedQueue cq;
+        cq.fetched_at_unix = j.value("fetched_at_unix", std::int64_t{0});
+        for (const auto& t : j.value("tracks", nlohmann::json::array())) {
+            ytmusic::QueueTrack qt;
+            qt.video_id = t.value("video_id", "");
+            qt.title = t.value("title", "");
+            qt.artist = t.value("artist", "");
+            qt.thumbnail_url = t.value("thumbnail_url", "");
+            qt.duration_ms = t.value("duration_ms", std::uint64_t{0});
+            if (!qt.video_id.empty()) cq.tracks.push_back(std::move(qt));
+        }
+        return cq.tracks.empty() ? std::nullopt : std::optional<CachedQueue>{std::move(cq)};
+    } catch (...) {
+        return std::nullopt;
+    }
+}
+
+void YouTubeMusicSource::save_cached_queue(const std::string& browse_id,
+                                           const std::vector<ytmusic::QueueTrack>& tracks) const {
+    nlohmann::json j;
+    j["fetched_at_unix"] = std::chrono::duration_cast<std::chrono::seconds>(
+                               std::chrono::system_clock::now().time_since_epoch())
+                               .count();
+    nlohmann::json arr = nlohmann::json::array();
+    for (const auto& t : tracks) {
+        arr.push_back(nlohmann::json{{"video_id", t.video_id},
+                                     {"title", t.title},
+                                     {"artist", t.artist},
+                                     {"thumbnail_url", t.thumbnail_url},
+                                     {"duration_ms", t.duration_ms}});
+    }
+    j["tracks"] = std::move(arr);
+
+    std::error_code ec;
+    auto tmp = cache_dir_ / (browse_id + ".json.tmp");
+    {
+        std::ofstream os(tmp, std::ios::binary | std::ios::trunc);
+        if (!os) return;
+        os << j.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
+    }
+    std::filesystem::rename(tmp, cache_dir_ / (browse_id + ".json"), ec);
+    if (ec) {
+        std::error_code rep;
+        std::filesystem::remove(cache_dir_ / (browse_id + ".json"), rep);
+        std::filesystem::rename(tmp, cache_dir_ / (browse_id + ".json"), rep);
+    }
+}
+
+void YouTubeMusicSource::refresh_cache_in_background(std::string browse_id) {
+    bool expected = false;
+    if (!cache_refreshing_.compare_exchange_strong(expected, true)) return; // already refreshing
+
+    std::thread([this, browse_id = std::move(browse_id)]() {
+        auto result = client_.browse_playlist(browse_id);
+        if (result.ok()) {
+            save_cached_queue(browse_id, result.value);
+            std::scoped_lock lk{mu_};
+            // Only swap the live queue in if we are still on this playlist;
+            // the user may have switched away while the fetch was in flight.
+            if (queue_built_for_ == browse_id) {
+                queue_.clear();
+                queue_.reserve(result.value.size());
+                std::size_t idx = 0;
+                for (auto& t : result.value) {
+                    queue_.push_back(InternalQueueEntry{watch_url_for_id(t.video_id), t.title,
+                                                        t.artist, idx++});
+                }
+            }
+        } else {
+            log::warn("[yt] background library refresh failed for {}", browse_id);
+        }
+        cache_refreshing_.store(false, std::memory_order_release);
+    }).detach();
+}
+
+bool YouTubeMusicSource::cast_library_playlist(std::string browse_id) {
+    auto cached = load_cached_queue(browse_id);
+    const auto now = std::chrono::duration_cast<std::chrono::seconds>(
+                        std::chrono::system_clock::now().time_since_epoch())
+                        .count();
+
+    std::vector<ytmusic::QueueTrack> tracks;
+    if (cached) {
+        tracks = std::move(cached->tracks);
+        if (now - cached->fetched_at_unix > kQueueCacheTtlSeconds) {
+            refresh_cache_in_background(browse_id); // stale: serve it, refresh behind it
+        }
+    } else {
+        auto result = client_.browse_playlist(browse_id);
+        if (!result.ok() || result.value.empty()) return false;
+        tracks = result.value;
+        save_cached_queue(browse_id, tracks);
+    }
+
+    std::scoped_lock lk{mu_};
+    discard_prefetch_locked();
+    stop_pipe_locked();
+    queue_.clear();
+    queue_.reserve(tracks.size());
+    std::size_t idx = 0;
+    for (auto& t : tracks) {
+        queue_.push_back(InternalQueueEntry{watch_url_for_id(t.video_id), t.title, t.artist, idx++});
+    }
+    queue_idx_ = 0;
+    queue_built_for_ = browse_id;
+    target_url_.clear();
+    start_pipe_locked();
+    if (pipe_) state_.store(PlaybackState::playing, std::memory_order_release);
+    return static_cast<bool>(pipe_);
+}
+
+bool YouTubeMusicSource::start_radio(std::string seed_video_id) {
+    auto result = client_.next(seed_video_id);
+    if (!result.ok() || result.value.empty()) return false;
+
+    std::scoped_lock lk{mu_};
+    discard_prefetch_locked();
+    stop_pipe_locked();
+    queue_.clear();
+    queue_.reserve(result.value.size() + 1);
+    // Keep the seed track as the first entry so radio starts on the track
+    // the user actually clicked "start radio" from.
+    queue_.push_back(InternalQueueEntry{watch_url_for_id(seed_video_id), "", "", 0});
+    std::size_t idx = 1;
+    for (auto& t : result.value) {
+        queue_.push_back(InternalQueueEntry{watch_url_for_id(t.video_id), t.title, t.artist, idx++});
+    }
+    queue_idx_ = 0;
+    queue_built_for_ = "radio:" + seed_video_id; // never matches a real browse_id, cache-exempt
+    target_url_.clear();
+    start_pipe_locked();
+    if (pipe_) state_.store(PlaybackState::playing, std::memory_order_release);
+    return static_cast<bool>(pipe_);
+}
+
+ytmusic::Result<std::vector<ytmusic::SearchResultItem>>
+YouTubeMusicSource::search_catalog(const std::string& query) const {
+    return client_.search(query);
+}
+
+ytmusic::Result<ytmusic::LibrarySnapshot> YouTubeMusicSource::library_snapshot() const {
+    return client_.browse_library();
+}
+
+ytmusic::Result<std::string> YouTubeMusicSource::track_lyrics(const std::string& video_id) const {
+    return client_.lyrics(video_id);
 }
 
 } // namespace fh6::sources
