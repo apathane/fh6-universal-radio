@@ -258,7 +258,7 @@ if (miniVolToggle && miniVolume) {
     });
 }
 
-$("#open-settings").addEventListener("click", async () => {
+async function openSettings() {
     try {
         cfg = await api.getConfig();
     } catch (e) {
@@ -268,7 +268,9 @@ $("#open-settings").addEventListener("click", async () => {
     renderSettings(refs.form, cfg);
     snapshotForm();
     openDrawer();
-});
+}
+
+$("#open-settings").addEventListener("click", openSettings);
 
 $("#close-settings").addEventListener("click", requestCloseDrawer);
 refs.scrim.addEventListener("click", requestCloseDrawer);
@@ -413,7 +415,7 @@ async function boot() {
 
     deps = createDeps(mainEl);
 
-    ytMusicShell = createYtMusicShell({ transport, openDrawer });
+    ytMusicShell = createYtMusicShell({ transport, openSettings });
 
     externalAudio = createExternalAudio(mainEl, {
         getState: () => state,

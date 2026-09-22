@@ -186,10 +186,16 @@ std::string InnertubeClient::post(std::string_view endpoint, const std::string& 
     if (!cookie_header_.empty()) headers.push_back("Cookie: " + cookie_header_);
     auto resp = net::http_post(url, body_json, headers);
     // http_post() returns a body for a completed exchange regardless of HTTP
-    // status (network failure is the only case with no body at all), so a
-    // real 401/403 auth failure still reaches looks_unauthenticated() below
-    // via its standard Innertube error JSON payload, the same as the
-    // already-handled case of a 200 response carrying an error object.
+    // status, so a 401/403 auth failure's body reaches looks_unauthenticated()
+    // below via its standard Innertube error JSON payload, the same as the
+    // already-handled case of a 200 response carrying an error object. Any
+    // OTHER non-2xx (400/404/429/500/...) is surfaced as empty, matching a
+    // network-level failure: every call site treats an empty body as
+    // InnertubeStatus::network_error, and none of them know how to read an
+    // error body for anything other than the auth case, so passing one
+    // through unfiltered would make e.g. a 429 look like a successful
+    // zero-result response instead of a failure.
+    if (resp.status != 200 && resp.status != 401 && resp.status != 403) return {};
     return resp.body.value_or(std::string{});
 }
 

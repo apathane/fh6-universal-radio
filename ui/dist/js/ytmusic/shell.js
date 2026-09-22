@@ -16,7 +16,7 @@ const TABS = [
     ["radio", "ytmusic.nav.radio"],
 ];
 
-export function createYtMusicShell({ transport, openDrawer } = {}) {
+export function createYtMusicShell({ transport, openSettings } = {}) {
     let activeTab = "home";
 
     const railButtons = new Map();
@@ -28,15 +28,22 @@ export function createYtMusicShell({ transport, openDrawer } = {}) {
     // The takeover hides the generic dashboard's own header (settings) and
     // hero (transport), so the shell needs its own way to reach both;
     // otherwise, once youtube_music is active, there is no way to pause,
-    // skip, or open settings at all.
-    const settingsBtn = el("button", {
-        type: "button",
-        class: "yt-nav-btn icon-btn",
-        "aria-label": t("settings.open"),
-    });
-    settingsBtn.innerHTML = icons.gear; // trusted static app icon, same pattern as main.js's mini-player icons
-    settingsBtn.addEventListener("click", () => openDrawer?.());
-    rail.append(settingsBtn);
+    // skip, or open settings at all. Two separate buttons (not one node
+    // reused) since the rail is hidden on phone and the tab bar is hidden
+    // on wide viewports (see ytmusic.css) -- only one is ever visible at a
+    // time, but each layout needs its own settings entry point.
+    function makeSettingsBtn() {
+        const btn = el("button", {
+            type: "button",
+            class: "yt-nav-btn icon-btn",
+            "aria-label": t("settings.open"),
+        });
+        btn.innerHTML = icons.gear; // trusted static app icon, same pattern as main.js's mini-player icons
+        btn.addEventListener("click", () => openSettings?.());
+        return btn;
+    }
+    rail.append(makeSettingsBtn());
+    tabbar.append(makeSettingsBtn());
 
     const views = {
         home: createHome(),
