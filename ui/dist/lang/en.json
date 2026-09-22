@@ -239,6 +239,11 @@
   "ytmusic.nav.library": "Library",
   "ytmusic.nav.radio": "Radio",
 
+  "ytmusic.search.placeholder": "Search songs, albums, artists...",
+  "ytmusic.search.no_results": "No results.",
+  "ytmusic.search.error": "Search failed, try again.",
+  "ytmusic.start_radio": "Start radio",
+
   // ─── Jellyfin card ──────────────────────────────────────────────────────
   "jellyfin.title": "Jellyfin",
   "jellyfin.description": "Enter a Jellyfin Playlist ID. The radio switches source and starts streaming immediately.",
