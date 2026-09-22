@@ -237,7 +237,7 @@ YouTubeMusicSource::QueueSnapshot YouTubeMusicSource::queue_snapshot() const {
     snap.cursor = queue_idx_;
     snap.entries.reserve(queue_.size());
     for (std::size_t i = 0; i < queue_.size(); ++i) {
-        snap.entries.push_back({i, queue_[i].url, queue_[i].title, queue_[i].artist});
+        snap.entries.push_back({i, queue_[i].url, queue_[i].title, queue_[i].artist, queue_[i].thumbnail_url});
     }
     return snap;
 }
@@ -874,7 +874,7 @@ void YouTubeMusicSource::refresh_cache_in_background(std::string browse_id) {
                 std::size_t idx = 0;
                 for (auto& t : result.value) {
                     queue_.push_back(InternalQueueEntry{watch_url_for_id(t.video_id), t.title,
-                                                        t.artist, idx++});
+                                                        t.artist, idx++, t.thumbnail_url});
                 }
             }
         } else {
@@ -915,7 +915,7 @@ bool YouTubeMusicSource::cast_library_playlist(std::string browse_id) {
     queue_.reserve(tracks.size());
     std::size_t idx = 0;
     for (auto& t : tracks) {
-        queue_.push_back(InternalQueueEntry{watch_url_for_id(t.video_id), t.title, t.artist, idx++});
+        queue_.push_back(InternalQueueEntry{watch_url_for_id(t.video_id), t.title, t.artist, idx++, t.thumbnail_url});
     }
     queue_idx_ = 0;
     queue_built_for_ = browse_id;
@@ -948,7 +948,7 @@ bool YouTubeMusicSource::start_radio(std::string seed_video_id) {
     queue_.push_back(InternalQueueEntry{watch_url_for_id(seed_video_id), "", "", 0});
     std::size_t idx = 1;
     for (auto& t : result.value) {
-        queue_.push_back(InternalQueueEntry{watch_url_for_id(t.video_id), t.title, t.artist, idx++});
+        queue_.push_back(InternalQueueEntry{watch_url_for_id(t.video_id), t.title, t.artist, idx++, t.thumbnail_url});
     }
     queue_idx_ = 0;
     queue_built_for_ = "radio:" + seed_video_id; // never matches a real browse_id, cache-exempt

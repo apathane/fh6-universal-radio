@@ -15,6 +15,11 @@ describe("ytmusic queue", () => {
     unsub();
   });
 
+  it("playTrack carries the thumbnail url through to the queue item", async () => {
+    await playTrack("abc123", "Some Song", "https://example.com/art.jpg");
+    expect(getQueue().items[0].thumbnail_url).toBe("https://example.com/art.jpg");
+  });
+
   it("playLibraryPlaylist tags the queue source as library", async () => {
     await playLibraryPlaylist("VLabc", "My Playlist");
     expect(getQueue().source).toBe("library");
@@ -23,5 +28,20 @@ describe("ytmusic queue", () => {
   it("startRadio tags the queue source as radio", async () => {
     await startRadio("abc123", "Some Song");
     expect(getQueue().source).toBe("radio");
+  });
+
+  it("playLibraryPlaylist pulls thumbnail_url through from the queue endpoint", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        cursor: 0,
+        tracks: [{ index: 0, title: "Track A", artist: "Artist A",
+                   url: "https://www.youtube.com/watch?v=xyz789", thumbnail_url: "https://example.com/xyz.jpg" }],
+      }),
+    });
+    await playLibraryPlaylist("VLabc", "My Playlist");
+    expect(getQueue().items[0]).toEqual({
+      video_id: "xyz789", title: "Track A", artist: "Artist A", thumbnail_url: "https://example.com/xyz.jpg",
+    });
   });
 });

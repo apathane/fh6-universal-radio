@@ -30,7 +30,12 @@ function videoIdFromUrl(url) {
 async function fetchQueueItems() {
     try {
         const q = await api.youtubeMusic.getQueue();
-        return (q.tracks || []).map(t => ({ video_id: videoIdFromUrl(t.url), title: t.title, artist: t.artist }));
+        return (q.tracks || []).map(t => ({
+            video_id: videoIdFromUrl(t.url),
+            title: t.title,
+            artist: t.artist,
+            thumbnail_url: t.thumbnail_url,
+        }));
     } catch {
         return [];
     }
@@ -45,10 +50,10 @@ export function getQueue() {
     return current;
 }
 
-export async function playTrack(videoId, title) {
+export async function playTrack(videoId, title, thumbnailUrl) {
     try {
         await api.youtubeMusic.playTrack(videoId);
-        current = { source: "search", items: [{ video_id: videoId, title }] };
+        current = { source: "search", items: [{ video_id: videoId, title, thumbnail_url: thumbnailUrl }] };
         notify();
     } catch (e) {
         toast(e.message, true);

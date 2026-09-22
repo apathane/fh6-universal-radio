@@ -989,7 +989,8 @@ struct HttpServer::Impl {
             json tracks = json::array();
             for (const auto& e : snap.entries) {
                 tracks.push_back(
-                    json{{"index", e.index}, {"title", e.title}, {"artist", e.artist}, {"url", e.url}});
+                    json{{"index", e.index}, {"title", e.title}, {"artist", e.artist}, {"url", e.url},
+                         {"thumbnail_url", e.thumbnail_url}});
             }
             return ok(json{{"cursor", snap.cursor}, {"tracks", tracks}});
         }

@@ -2,7 +2,7 @@ import { el } from "../../lib/dom.js";
 import { api } from "../../data/api.js";
 import { t } from "../../i18n.js";
 import { getQueue, onQueueChange } from "../queue.js";
-import { itemRow, itemTile, splitResults } from "../itemRow.js";
+import { itemRow, itemTile, splitResults, queueRow } from "../itemRow.js";
 
 export function createHome() {
     const body = el("div", { class: "yt-home-body" });
@@ -41,12 +41,7 @@ export function createHome() {
     function drawUpNext(q) {
         body.replaceChildren(
             el("h3", {}, t("ytmusic.home.up_next")),
-            ...q.items.map(track =>
-                el("div", { class: "yt-search-row" }, [
-                    el("span", { class: "yt-search-title" }, track.title || track.video_id),
-                    track.artist ? el("span", { class: "yt-search-subtitle muted" }, track.artist) : null,
-                ].filter(Boolean)),
-            ),
+            ...q.items.map(queueRow),
         );
     }
 

@@ -1,6 +1,7 @@
 import { el } from "../../lib/dom.js";
 import { t } from "../../i18n.js";
 import { getQueue, onQueueChange } from "../queue.js";
+import { queueRow } from "../itemRow.js";
 
 export function createRadio() {
     const body = el("div", { class: "yt-radio-body" });
@@ -14,12 +15,7 @@ export function createRadio() {
         }
         body.replaceChildren(
             el("h3", {}, t("ytmusic.radio.now_playing")),
-            ...q.items.map(track =>
-                el("div", { class: "yt-search-row" }, [
-                    el("span", { class: "yt-search-title" }, track.title || track.video_id),
-                    track.artist ? el("span", { class: "yt-search-subtitle muted" }, track.artist) : null,
-                ].filter(Boolean)),
-            ),
+            ...q.items.map(queueRow),
         );
     }
 

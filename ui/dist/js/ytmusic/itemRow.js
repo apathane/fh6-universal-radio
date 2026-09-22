@@ -33,7 +33,7 @@ export function itemRow(item) {
                 : null,
         ].filter(Boolean)),
     ]);
-    row.addEventListener("click", () => playTrack(item.video_id, item.title));
+    row.addEventListener("click", () => playTrack(item.video_id, item.title, item.thumbnail_url));
 
     const radioBtn = el("button", { type: "button", class: "btn ghost yt-radio-btn" }, t("ytmusic.start_radio"));
     radioBtn.addEventListener("click", e => {
@@ -54,6 +54,20 @@ export function itemTile(item) {
     ]);
     tile.addEventListener("click", () => playLibraryPlaylist(item.browse_id, item.title));
     return tile;
+}
+
+// A queued/now-playing track, display only: thumbnail plus title/artist, no
+// click handler and no Start Radio button (it's already playing or queued,
+// re-triggering play from here would be redundant). Used by the "up next"
+// list (home.js) and the radio view's current autoplay queue (radio.js).
+export function queueRow(item) {
+    return el("div", { class: "yt-item-row" }, [
+        thumb(item, "yt-item-thumb", "yt-item-thumb-img"),
+        el("div", { class: "yt-item-text" }, [
+            el("span", { class: "yt-item-title" }, item.title || item.video_id),
+            item.artist ? el("span", { class: "yt-item-subtitle muted" }, item.artist) : null,
+        ].filter(Boolean)),
+    ]);
 }
 
 // Splits a mixed result list (search results, the home feed) into playable

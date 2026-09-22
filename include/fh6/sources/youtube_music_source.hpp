@@ -62,6 +62,7 @@ public:
         std::string url;
         std::string title;
         std::string artist;
+        std::string thumbnail_url; // empty for a queue built from a saved station (yt-dlp has no art)
     };
     struct QueueSnapshot {
         std::size_t cursor;
@@ -151,6 +152,7 @@ private:
         std::string title;
         std::string artist;
         std::size_t original_index = 0;
+        std::string thumbnail_url; // empty when resolved via yt-dlp (a saved station); set for Innertube-sourced entries
     };
     std::vector<InternalQueueEntry> queue_; // canonical watch URLs in playback order
     std::size_t queue_idx_ = 0;
